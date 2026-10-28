@@ -90,7 +90,7 @@
 /* ===== 設定（試作） ===== */
 const LIFF_ID = '2012236510-lJhjvoju';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxsq0NF3FED2DzrpeQTapiuWiGPcZpMPdxAeZYXy0IGkN6FEnIWAaE-H7oZUi3zwX-C/exec';
-const VERSION = '試作3';
+const VERSION = '試作4';
 
 /* ===== 状態 ===== */
 const params = new URLSearchParams(location.search);
@@ -140,27 +140,45 @@ async function api(payload) {
 /* 電波がないときの保存と再送 */
 function queueGet() { return store('demen_queue') || []; }
 function queueSet(q) { store('demen_queue', q); renderQueue(); }
+function queueLabel(item) {
+  const p = item.payload || {};
+  const t = new Date(item.deviceTime);
+  const when = (t.getMonth() + 1) + '/' + t.getDate() + ' ' + hhmm(t);
+  return (p.action === 'report' ? '日報' : (p.type || '打刻')) + '（' + when + '）';
+}
 function renderQueue() {
   const q = queueGet();
   const box = document.getElementById('queue');
   if (!q.length) { box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
-  box.replaceChildren(
-    el('div', null, '未送信が' + q.length + '件あります。電波が戻ったら自動で送ります。'),
-    el('button', { class: 'link', onclick: flushQueue }, '今すぐ送る')
-  );
+  const waiting = q.filter(i => !i.lastError);
+  const stuck = q.filter(i => i.lastError);
+  box.replaceChildren(...clean([
+    waiting.length ? el('div', null, '未送信が' + waiting.length + '件あります。電波が戻ったら自動で送ります。') : null,
+    waiting.length ? el('button', { class: 'link', onclick: flushQueue }, '今すぐ送る') : null,
+    stuck.map(item => el('div', { style: 'margin-top:8px' },
+      el('div', null, '送れなかった記録：' + queueLabel(item)),
+      el('div', null, '理由：' + item.lastError),
+      el('div', null, '事務所に連絡して、記録を直してもらってください。'),
+      el('button', { class: 'link', onclick: () => { if (confirm('事務所に伝えましたか？この記録をスマホから消します。')) { queueSet(queueGet().filter(x => x.id !== item.id)); } } }, '事務所に伝えたので消す'),
+      el('button', { class: 'link', style: 'margin-left:12px', onclick: () => { item.lastError = null; queueSet(queueGet().map(x => x.id === item.id ? item : x)); flushQueue(); } }, 'もう一度送る'))),
+  ]));
 }
+// 送れたもの・受付が受け取ったものだけを消す。受付に断られたものは理由を付けて残し、黙って消さない
 async function flushQueue() {
   const q = queueGet();
   if (!q.length || !navigator.onLine) return;
-  const rest = [];
+  const keep = [];
   for (const item of q) {
+    if (item.lastError) { keep.push(item); continue; }
     try {
       const r = await api(Object.assign({}, item.payload, { offline: true, deviceTime: item.deviceTime }));
-      if (!r.ok && !r.already) item.lastError = r.error;
-    } catch (e) { rest.push(item); }
+      if (r.ok) continue;
+      item.lastError = r.already ? 'この日はすでに日報が送られていました。内容が違う場合は、画面から修正してください' : (r.error || '受付で断られました');
+      keep.push(item);
+    } catch (e) { keep.push(item); }
   }
-  queueSet(rest);
+  queueSet(keep);
 }
 function isNetworkError(e) { return !navigator.onLine || e instanceof TypeError; }
 
@@ -213,6 +231,8 @@ function sitePicker(key, opts) {
     },
       el('option', { value: '' }, 'ほかの現場を探す…'),
       all.map(s => el('option', { value: s.id, selected: pick.siteId === s.id && !sugg.some(x => x.id === s.id) }, s.name)),
+      (S.info.oldSites || []).length ? el('optgroup', { label: '以前の現場（終了）' },
+        S.info.oldSites.slice().sort((a, b) => a.name.localeCompare(b.name, 'ja')).map(s => el('option', { value: s.id, selected: pick.siteId === s.id }, s.name))) : null,
       el('option', { value: '__free', selected: !!pick.free }, '一覧にない現場（名前を入力）')
     );
     const free = pick.free ? el('label', { class: 'field' }, el('span', null, '現場の名前'),
@@ -347,10 +367,10 @@ function showRegister(err) {
   show(
     el('h1', null, 'はじめての登録'),
     err ? el('div', { class: 'notice bad' }, err) : null,
-    el('p', null, '事務所から聞いた4桁の登録コード（LINEを入れ直したときは再登録コード）を入れてください。'),
-    el('input', { type: 'tel', inputmode: 'numeric', maxlength: '4', placeholder: '0000', autocomplete: 'one-time-code',
-      style: 'font-size:28px;text-align:center;letter-spacing:.4em',
-      oninput: e => { code = e.target.value.replace(/\D/g, '').slice(0, 4); e.target.value = code; btn.disabled = code.length !== 4; } }),
+    el('p', null, '事務所から聞いた6桁の登録コード（LINEを入れ直したときは再登録コード）を入れてください。'),
+    el('input', { type: 'tel', inputmode: 'numeric', maxlength: '6', placeholder: '000000', autocomplete: 'one-time-code',
+      style: 'font-size:28px;text-align:center;letter-spacing:.3em',
+      oninput: e => { code = e.target.value.replace(/\D/g, '').slice(0, 6); e.target.value = code; btn.disabled = code.length !== 6; } }),
     btn
   );
 }
@@ -535,7 +555,7 @@ async function sendRecord(payload, onOk) {
   } catch (e) {
     if (isNetworkError(e)) {
       const q = queueGet();
-      q.push({ payload: payload, deviceTime: new Date().toISOString() });
+      q.push({ id: 'Q' + Date.now() + Math.random().toString(36).slice(2, 6), payload: payload, deviceTime: new Date().toISOString() });
       queueSet(q);
       showDone('電波がないため、スマホに保存しました', hhmm(new Date()), '電波が戻ったら自動で送ります。この画面は閉じて構いません。', null, []);
     } else {
@@ -596,8 +616,9 @@ function mockApi(p) {
     if (p.action === 'init') return res({ ok: true, registered: true, today: '2026/10/27', yesterday: '2026/10/26',
       staff: { id: 'E001', name: '試作 太郎', kubun: kubun, geo: true, oyakata: true },
       sites: [{ id: 'G001', name: '舞鶴病院 改修', lat: 35.4745, lng: 135.386 }, { id: 'G002', name: '東舞鶴駅前ビル 照明', lat: 35.468, lng: 135.395 }, { id: 'G003', name: '倉庫（社内）', lat: null, lng: null }],
-      recentSiteIds: ['G002'], openShift: params.get('open') === '1' ? { time: '07:58', siteId: 'G001', siteName: '舞鶴病院 改修', workDate: '2026/10/27' } : null,
+      recentSiteIds: ['G002'], oldSites: [{ id: 'G009', name: '綾部 倉庫 改修（終了）', lat: null, lng: null }], openShift: params.get('open') === '1' ? { time: '07:58', siteId: 'G001', siteName: '舞鶴病院 改修', workDate: '2026/10/27' } : null,
       reportedDates: params.get('done') === '1' ? { '2026/10/27': [{ siteName: '舞鶴病院 改修', ninku: 1, count: 3 }] } : {} });
+    if (p.offline && params.get('reject') === '1') return res({ ok: false, error: 'テスト用：受付で断られました' });
     const until = new Date(Date.now() + 5 * 60000).toISOString();
     if (p.action === 'cancel') return res({ ok: true, cancelled: '出勤 ' + hhmm(new Date()) + ' 舞鶴病院 改修' });
     if (p.action === 'punch') return res({ ok: true, type: p.type, time: hhmm(new Date()), siteName: '舞鶴病院 改修', judge: '範囲内', notes: [], duration: p.type === '退勤' ? '9:34' : undefined, cancel: { target: 'R000009', until: until } });
