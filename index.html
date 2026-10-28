@@ -59,6 +59,18 @@
   .consent ul { padding-left: 1.2em; margin: 8px 0; }
   .hidden { display: none !important; }
   .pre { white-space: pre-line; }
+  .mine-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+  .mine-sum b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
+  .mine-sum span { font-size: 13px; color: var(--sub); }
+  .day { border-bottom: 1px solid var(--line); padding: 10px 0; }
+  .day:last-child { border-bottom: 0; }
+  .day-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .day-date { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .day-time { font-variant-numeric: tabular-nums; }
+  .day-site { color: var(--sub); font-size: 15px; }
+  .tag { display: inline-block; margin: 4px 6px 0 0; padding: 2px 8px; border-radius: 999px; font-size: 13px; }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  .tag.info { background: #eceae5; color: var(--sub); }
   .spinner { margin: 60px auto; width: 36px; height: 36px; border: 4px solid var(--line); border-top-color: var(--main); border-radius: 50%; animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
@@ -78,7 +90,7 @@
 /* ===== 設定（試作） ===== */
 const LIFF_ID = '2012236510-lJhjvoju';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxsq0NF3FED2DzrpeQTapiuWiGPcZpMPdxAeZYXy0IGkN6FEnIWAaE-H7oZUi3zwX-C/exec';
-const VERSION = '試作2';
+const VERSION = '試作3';
 
 /* ===== 状態 ===== */
 const params = new URLSearchParams(location.search);
@@ -249,7 +261,45 @@ function showDone(title, big, sub, judge, notes, cancel) {
   ),
   (notes || []).map(n => el('div', { class: 'notice warn' }, n)),
   el('button', { class: 'primary', onclick: closeApp }, '閉じる'),
-  cancelBtn);
+  cancelBtn,
+  mineLink());
+}
+
+/* ===== 画面：自分の記録 ===== */
+function mineLink() { return el('button', { class: 'link', style: 'display:block;margin:18px auto 0', onclick: () => showMine('this') }, '今月の自分の記録を見る'); }
+const WD = ['日', '月', '火', '水', '木', '金', '土'];
+function dayLabel(d) { const t = new Date(d.replace(/\//g, '-') + 'T00:00:00+09:00'); return Number(d.slice(5, 7)) + '/' + Number(d.slice(8, 10)) + '（' + WD[t.getDay()] + '）'; }
+async function showMine(month) {
+  spinner('記録を読み込んでいます');
+  let r;
+  try { r = await api({ action: 'mine', month: month }); }
+  catch (e) { return showError('記録を読み込めませんでした。電波の良いところでもう一度お試しください。', () => showMine(month)); }
+  if (!r.ok) return showError(r.error || '記録を読み込めませんでした。');
+  const isSub = r.kubun === '下請';
+  const seg = el('div', { class: 'seg' },
+    el('button', { 'aria-pressed': String(r.month === 'this'), onclick: () => showMine('this') }, '今月'),
+    el('button', { 'aria-pressed': String(r.month === 'prev'), onclick: () => showMine('prev') }, '先月'));
+  const sum = el('div', { class: 'card mine-sum' },
+    el('div', null, el('b', null, r.summary.days), el('span', null, isSub ? '報告した日' : '出勤した日')),
+    isSub ? el('div', null, el('b', null, r.summary.total), el('span', null, '延べ人工'))
+      : el('div', null, el('b', null, r.summary.hours || '0:00'), el('span', null, '拘束時間の合計')),
+    el('div', null, el('b', { style: r.summary.check ? 'color:var(--warn)' : '' }, r.summary.check), el('span', null, '確認が必要')));
+  const list = r.rows.length ? el('div', { class: 'card' }, r.rows.map(d => el('div', { class: 'day' },
+    el('div', { class: 'day-head' },
+      el('span', { class: 'day-date' }, dayLabel(d.date)),
+      isSub
+        ? el('span', { class: 'day-time' }, (d.ninku === 1 ? '1日' : d.ninku === 0.5 ? '半日' : d.ninku === '混在' ? '1日・半日' : '') + (d.count ? '×' + d.count + '人' : '') + '　延べ' + d.total)
+        : el('span', { class: 'day-time' }, (d.in || '--:--') + ' 〜 ' + (d.out || '--:--') + (d.duration ? '　' + d.duration : ''))),
+    el('div', { class: 'day-site' }, d.site || '（現場なし）'),
+    d.notes.length ? el('div', null, d.notes.map(n => el('span', { class: 'tag ' + (n === '事務所が修正しました' || n === '勤務中' ? 'info' : 'warn') }, n))) : null
+  ))) : el('div', { class: 'card muted' }, 'この月の記録はまだありません。');
+  S.onPos = null;
+  show(
+    el('h1', null, r.label + 'の自分の記録'),
+    seg, el('div', { style: 'height:12px' }), sum, list,
+    el('p', { class: 'muted' }, '記録が違っているときは、事務所に連絡してください。「確認が必要」の日は、事務所が直すまで表示が残ります。'),
+    el('button', { class: 'primary', onclick: () => isSub ? reloadTo('日報') : reloadTo('出勤') }, isSub ? '日報の画面へ' : '打刻の画面へ'),
+    el('button', { class: 'secondary', onclick: closeApp }, '閉じる'));
 }
 
 /* ===== 画面：取り消し ===== */
@@ -387,7 +437,8 @@ function showPunch(type) {
     picker, changeSite, changeBox,
     el('label', { class: 'field' }, el('span', null, 'メモ'), memo),
     el('div', { style: 'margin-top:10px' }, posNote),
-    send);
+    send,
+    mineLink());
 }
 
 async function doPunch(type, memo) {
@@ -442,7 +493,8 @@ function showReport(errMsg) {
     el('h2', null, '作業日'), dateSeg, doneNote,
     lineCards, addLine,
     el('label', { class: 'field' }, el('span', null, 'メモ'), memo),
-    el('button', { class: 'primary', onclick: () => doReport(done ? 'ask' : 'new') }, '報告する')
+    el('button', { class: 'primary', onclick: () => doReport(done ? 'ask' : 'new') }, '報告する'),
+    mineLink()
   );
 }
 
@@ -514,6 +566,7 @@ async function start() {
   }
   // LINEの中で開くと、mode などの指定は liff.init の後で URL に戻るので、ここで読み直す
   const m = new URLSearchParams(location.search).get('mode');
+  if (m === 'mine') return showMine('this');
   if (info.staff.kubun === '下請') { S.mode = '日報'; showReport(); }
   else showPunch(m === 'out' ? '退勤' : '出勤');
 }
@@ -548,6 +601,14 @@ function mockApi(p) {
     const until = new Date(Date.now() + 5 * 60000).toISOString();
     if (p.action === 'cancel') return res({ ok: true, cancelled: '出勤 ' + hhmm(new Date()) + ' 舞鶴病院 改修' });
     if (p.action === 'punch') return res({ ok: true, type: p.type, time: hhmm(new Date()), siteName: '舞鶴病院 改修', judge: '範囲内', notes: [], duration: p.type === '退勤' ? '9:34' : undefined, cancel: { target: 'R000009', until: until } });
+    if (p.action === 'mine') return res(kubun === '下請'
+      ? { ok: true, label: '2026年10月', month: p.month || 'this', kubun: '下請', summary: { days: 2, total: 5, check: 0 }, rows: [
+          { date: '2026/10/27', site: '舞鶴病院 改修', ninku: 1, count: 3, total: 3, notes: [] },
+          { date: '2026/10/22', site: '東舞鶴駅前ビル 照明', ninku: '', count: '', total: 2, notes: ['事務所が修正しました'] }] }
+      : { ok: true, label: p.month === 'prev' ? '2026年9月' : '2026年10月', month: p.month || 'this', kubun: '社員', summary: { days: 3, total: 3, hours: '18:30', check: 1 }, rows: [
+          { date: '2026/10/27', site: '舞鶴病院 改修', in: '08:00', out: '17:30', duration: '9:30', notes: [] },
+          { date: '2026/10/26', site: '舞鶴病院 改修', in: '08:00', out: '', duration: '', notes: ['退勤の記録がありません'] },
+          { date: '2026/10/23', site: '東舞鶴駅前ビル 照明', in: '08:00', out: '17:00', duration: '9:00', notes: ['事務所が修正しました'] }] });
     if (p.action === 'report') return res(p.mode === 'new' && params.get('done') === '1' ? { ok: false, already: true, summary: ['舞鶴病院 改修 1日×3人'] } : { ok: true, workDate: p.workDate, mode: p.mode === 'fix' ? '修正' : p.mode === 'add' ? '追加' : '新規', saved: p.lines.map(l => (l.siteName || l.siteId) + ' ' + (l.ninku === 1 ? '1日' : '半日') + '×' + l.count + '人') });
     res({ ok: false, error: '不明' });
   }, 300));
