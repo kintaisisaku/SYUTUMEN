@@ -68,6 +68,7 @@
   <header class="hidden" id="hdr"><span class="who" id="who"></span><span class="clock" id="clock"></span></header>
   <div id="queue" class="notice warn hidden"></div>
   <div id="app"><div class="spinner" aria-label="読み込み中"></div></div>
+  <footer id="ver" style="margin-top:28px;text-align:center;color:#9a9890;font-size:12px"></footer>
 </main>
 
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js" charset="utf-8"></script>
@@ -77,7 +78,7 @@
 /* ===== 設定（試作） ===== */
 const LIFF_ID = '2012236510-lJhjvoju';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxsq0NF3FED2DzrpeQTapiuWiGPcZpMPdxAeZYXy0IGkN6FEnIWAaE-H7oZUi3zwX-C/exec';
-const VERSION = '試作1';
+const VERSION = '試作2';
 
 /* ===== 状態 ===== */
 const params = new URLSearchParams(location.search);
@@ -225,8 +226,21 @@ function showError(msg, retry) {
     el('button', { class: 'secondary', onclick: closeApp }, '閉じる')
   );
 }
-function showDone(title, big, sub, judge, notes) {
+function showDone(title, big, sub, judge, notes, cancel) {
   const cls = judge === '範囲内' ? 'in' : judge === '範囲外' ? 'out' : 'na';
+  const args = arguments;
+  let cancelBtn = null;
+  if (cancel && cancel.target && cancel.until) {
+    const until = new Date(cancel.until).getTime();
+    cancelBtn = el('button', { class: 'secondary', onclick: () => askCancel(cancel, () => showDone.apply(null, args)) });
+    const tick = () => {
+      const left = Math.round((until - Date.now()) / 1000);
+      if (left <= 0 || !document.body.contains(cancelBtn)) { cancelBtn.remove(); clearInterval(timer); return; }
+      cancelBtn.textContent = '間違えたので取り消す（あと' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') + '）';
+    };
+    const timer = setInterval(tick, 1000);
+    setTimeout(tick, 0);
+  }
   show(el('div', { class: 'card done' },
     el('div', { class: 'muted' }, title),
     el('div', { class: 'big' }, big),
@@ -234,7 +248,45 @@ function showDone(title, big, sub, judge, notes) {
     judge ? el('span', { class: 'judge ' + cls }, judge) : null
   ),
   (notes || []).map(n => el('div', { class: 'notice warn' }, n)),
-  el('button', { class: 'primary', onclick: closeApp }, '閉じる'));
+  el('button', { class: 'primary', onclick: closeApp }, '閉じる'),
+  cancelBtn);
+}
+
+/* ===== 画面：取り消し ===== */
+function askCancel(cancel, back) {
+  show(
+    el('h1', null, '取り消しますか'),
+    el('div', { class: 'card pre' }, cancel.label),
+    el('p', null, '取り消すと、この記録はなかったことになります（記録の跡は事務所に残ります）。'),
+    el('button', { class: 'primary', onclick: () => doCancel(cancel) }, '取り消す'),
+    el('button', { class: 'secondary', onclick: back }, 'やめて戻る')
+  );
+}
+async function doCancel(cancel) {
+  spinner('取り消しています');
+  try {
+    const r = await api({ action: 'cancel', target: cancel.target });
+    if (!r.ok) return showError(r.error || '取り消せませんでした。');
+    const isSub = S.info.staff.kubun === '下請';
+    show(
+      el('div', { class: 'notice ok' }, '取り消しました：' + r.cancelled),
+      isSub ? el('button', { class: 'primary', onclick: () => reloadTo('日報') }, '日報を送り直す')
+        : [el('button', { class: 'primary', onclick: () => reloadTo('出勤') }, '出勤を記録し直す'),
+           el('button', { class: 'secondary', onclick: () => reloadTo('退勤') }, '退勤を記録し直す')],
+      el('button', { class: 'secondary', onclick: closeApp }, '閉じる')
+    );
+  } catch (e) {
+    showError('取り消しを送れませんでした。電波の良いところでもう一度お試しください。', () => doCancel(cancel));
+  }
+}
+async function reloadTo(mode) {
+  spinner('読み込んでいます');
+  try {
+    const info = await api({ action: 'init' });
+    if (!info.ok) return showError(info.error || '読み込めませんでした。');
+    S.info = info; S.picks = {}; S.lines = []; S.memo = ''; S.workDate = null;
+    if (mode === '日報') { S.mode = '日報'; showReport(); } else showPunch(mode);
+  } catch (e) { showError('読み込めませんでした。', () => reloadTo(mode)); }
 }
 function closeApp() { if (!MOCK && window.liff && liff.isInClient()) liff.closeWindow(); else show(el('p', { class: 'muted' }, 'この画面は閉じて構いません。')); }
 
@@ -295,13 +347,15 @@ function showPunch(type) {
   }
   updatePosNote();
 
-  let picker = null, body;
+  let picker = null, body, guard = false;
   const memo = el('input', { type: 'text', maxlength: '100', placeholder: type === '退勤' ? '残業の理由など（任意）' : '一言メモ（任意）' });
-  const send = el('button', { class: 'primary', onclick: () => doPunch(type, memo.value) }, type + 'する');
+  const openToday = info.openShift && info.openShift.workDate === info.today;
 
   if (type === '出勤') {
-    if (info.openShift && info.openShift.workDate === info.today) {
-      body = el('div', { class: 'notice warn' }, '今日はすでに ' + info.openShift.time + ' に出勤しています（' + info.openShift.siteName + '）。もう一度押すと2回目の出勤として記録されます。');
+    if (openToday) {
+      guard = true;
+      body = [el('div', { class: 'notice warn' }, '今日はすでに ' + info.openShift.time + ' に出勤しています（' + info.openShift.siteName + '）。退勤の押し間違いではありませんか？'),
+        el('button', { class: 'primary', onclick: () => showPunch('退勤') }, '退勤の画面へ')];
     }
     picker = sitePicker('punch', { autoFirst: true });
   } else {
@@ -310,9 +364,14 @@ function showPunch(type) {
       body = el('div', { class: 'card' }, el('div', { class: 'muted' }, '今日の出勤'),
         el('div', { style: 'font-size:22px;font-weight:700' }, info.openShift.time + '　' + info.openShift.siteName));
     } else {
-      body = el('div', { class: 'notice warn' }, '今日の出勤の記録がありません。退勤だけ記録します。');
+      guard = true;
+      body = [el('div', { class: 'notice warn' }, '今日の出勤の記録がありません。出勤の押し間違いではありませんか？'),
+        el('button', { class: 'primary', onclick: () => showPunch('出勤') }, '出勤の画面へ')];
+      picker = sitePicker('punch', { autoFirst: true });
     }
   }
+  const sendLabel = !guard ? type + 'する' : type === '出勤' ? '2回目の出勤として記録する' : '退勤だけ記録する';
+  const send = el('button', { class: guard ? 'secondary' : 'primary', onclick: () => doPunch(type, memo.value) }, sendLabel);
   S.onPos = () => { updatePosNote(); if (picker) picker.rerender(); };
 
   const changeSite = (type === '退勤' && info.openShift) ? el('button', { class: 'link', onclick: () => {
@@ -324,7 +383,7 @@ function showPunch(type) {
   const changeBox = el('div');
 
   show(tabs, body || null,
-    type === '出勤' ? el('h2', null, '現場') : null,
+    picker && !changeSite ? el('h2', null, '現場') : null,
     picker, changeSite, changeBox,
     el('label', { class: 'field' }, el('span', null, 'メモ'), memo),
     el('div', { style: 'margin-top:10px' }, posNote),
@@ -338,7 +397,8 @@ async function doPunch(type, memo) {
   if (S.info.staff.geo && S.pos) Object.assign(payload, { lat: S.pos.lat, lng: S.pos.lng, acc: S.pos.acc });
   await sendRecord(payload, r => {
     const sub = (r.siteName || '') + (r.duration ? '　拘束 ' + r.duration : '');
-    showDone(type + 'を記録しました', r.time, sub, r.judge, r.notes);
+    showDone(type + 'を記録しました', r.time, sub, r.judge, r.notes,
+      r.cancel ? Object.assign({ label: type + ' ' + r.time + (r.siteName ? '　' + r.siteName : '') }, r.cancel) : null);
   });
 }
 
@@ -396,7 +456,8 @@ async function doReport(mode) {
   if (S.info.staff.geo && S.pos) Object.assign(payload, { lat: S.pos.lat, lng: S.pos.lng, acc: S.pos.acc });
   await sendRecord(payload, r => {
     if (!r.ok && r.already) return askReportMode(r.summary);
-    showDone('日報を記録しました（' + r.mode + '）', r.workDate.slice(5), r.saved.join('\n'), null, []);
+    showDone('日報を記録しました（' + r.mode + '）', r.workDate.slice(5), r.saved.join('\n'), null, [],
+      r.cancel ? Object.assign({ label: '日報 ' + r.workDate.slice(5) + '\n' + r.saved.join('\n') }, r.cancel) : null);
     S.lines = []; S.picks = {}; S.memo = '';
   });
 }
@@ -458,6 +519,7 @@ async function start() {
 }
 
 async function boot() {
+  document.getElementById('ver').textContent = '出面打刻 ' + VERSION;
   renderQueue();
   window.addEventListener('online', flushQueue);
   if (MOCK) return start();
@@ -483,7 +545,9 @@ function mockApi(p) {
       sites: [{ id: 'G001', name: '舞鶴病院 改修', lat: 35.4745, lng: 135.386 }, { id: 'G002', name: '東舞鶴駅前ビル 照明', lat: 35.468, lng: 135.395 }, { id: 'G003', name: '倉庫（社内）', lat: null, lng: null }],
       recentSiteIds: ['G002'], openShift: params.get('open') === '1' ? { time: '07:58', siteId: 'G001', siteName: '舞鶴病院 改修', workDate: '2026/10/27' } : null,
       reportedDates: params.get('done') === '1' ? { '2026/10/27': [{ siteName: '舞鶴病院 改修', ninku: 1, count: 3 }] } : {} });
-    if (p.action === 'punch') return res({ ok: true, type: p.type, time: hhmm(new Date()), siteName: '舞鶴病院 改修', judge: '範囲内', notes: [], duration: p.type === '退勤' ? '9:34' : undefined });
+    const until = new Date(Date.now() + 5 * 60000).toISOString();
+    if (p.action === 'cancel') return res({ ok: true, cancelled: '出勤 ' + hhmm(new Date()) + ' 舞鶴病院 改修' });
+    if (p.action === 'punch') return res({ ok: true, type: p.type, time: hhmm(new Date()), siteName: '舞鶴病院 改修', judge: '範囲内', notes: [], duration: p.type === '退勤' ? '9:34' : undefined, cancel: { target: 'R000009', until: until } });
     if (p.action === 'report') return res(p.mode === 'new' && params.get('done') === '1' ? { ok: false, already: true, summary: ['舞鶴病院 改修 1日×3人'] } : { ok: true, workDate: p.workDate, mode: p.mode === 'fix' ? '修正' : p.mode === 'add' ? '追加' : '新規', saved: p.lines.map(l => (l.siteName || l.siteId) + ' ' + (l.ninku === 1 ? '1日' : '半日') + '×' + l.count + '人') });
     res({ ok: false, error: '不明' });
   }, 300));
