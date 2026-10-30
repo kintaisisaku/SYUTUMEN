@@ -90,7 +90,7 @@
 /* ===== 設定（試作） ===== */
 const LIFF_ID = '2012236510-lJhjvoju';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxsq0NF3FED2DzrpeQTapiuWiGPcZpMPdxAeZYXy0IGkN6FEnIWAaE-H7oZUi3zwX-C/exec';
-const VERSION = '試作4';
+const VERSION = '試作5';
 
 /* ===== 状態 ===== */
 const params = new URLSearchParams(location.search);
@@ -383,6 +383,14 @@ async function doRegister(code, consent) {
     await start();
   } catch (e) { showError('登録できませんでした。電波の良いところでもう一度お試しください。', () => doRegister(code, consent)); }
 }
+async function doConsent() {
+  spinner('記録しています');
+  try {
+    const r = await api({ action: 'consent' });
+    if (!r.ok) return showError(r.error || '記録できませんでした。', doConsent);
+    await start();
+  } catch (e) { showError('記録できませんでした。電波の良いところでもう一度お試しください。', doConsent); }
+}
 function showConsent(code, name) {
   show(
     el('h1', null, name + 'さん、位置情報についての確認'),
@@ -395,7 +403,7 @@ function showConsent(code, name) {
         el('li', null, '位置を許可しなくても打刻はできます（「位置なし」と記録されます）')
       )
     ),
-    el('button', { class: 'primary', onclick: () => doRegister(code, true) }, '同意して登録する'),
+    el('button', { class: 'primary', onclick: () => code ? doRegister(code, true) : doConsent() }, code ? '同意して登録する' : '同意して始める'),
     el('button', { class: 'secondary', onclick: () => showError('同意しない場合は、事務所に連絡してください。位置を取らない設定に変えてもらえます。') }, '同意しない')
   );
 }
@@ -575,6 +583,7 @@ async function start() {
   }
   if (!info.ok) return showError(info.error || '読み込めませんでした。', start);
   if (!info.registered) return showRegister();
+  if (info.needConsent) return showConsent(null, info.name); // LINEのトークで登録した人は、ここで位置の記録に同意してもらう
   S.info = info;
   document.getElementById('who').textContent = info.staff.name + 'さん';
   document.getElementById('hdr').classList.remove('hidden');
@@ -613,6 +622,8 @@ function mockApi(p) {
   return new Promise(res => setTimeout(() => {
     if (params.get('reg') === 'no' && p.action !== 'register') return res({ ok: true, registered: false });
     if (p.action === 'register') return res(p.consent ? { ok: true, registered: true } : { ok: true, needConsent: true, name: '試作 太郎' });
+    if (p.action === 'init' && params.get('consent') === 'need' && !window.__consented) return res({ ok: true, registered: true, needConsent: true, name: '試作 太郎' });
+    if (p.action === 'consent') { window.__consented = true; return res({ ok: true }); }
     if (p.action === 'init') return res({ ok: true, registered: true, today: '2026/10/27', yesterday: '2026/10/26',
       staff: { id: 'E001', name: '試作 太郎', kubun: kubun, geo: true, oyakata: true },
       sites: [{ id: 'G001', name: '舞鶴病院 改修', lat: 35.4745, lng: 135.386 }, { id: 'G002', name: '東舞鶴駅前ビル 照明', lat: 35.468, lng: 135.395 }, { id: 'G003', name: '倉庫（社内）', lat: null, lng: null }],
