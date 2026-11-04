@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>出面打刻</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --ink: #1f2328; --sub: #5d6470; --line: #dcd9d2;
+    --main: #1f6f5c; --main-ink: #ffffff; --main-soft: #e3f1ec;
+    --warn: #9a5b00; --warn-soft: #fbf0dc; --bad: #a3322b; --bad-soft: #f9e6e4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+    font-size: 17px; line-height: 1.5; -webkit-text-size-adjust: 100%; }
+  main { max-width: 480px; margin: 0 auto; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); }
+  header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+  header .who { font-weight: 700; font-size: 18px; }
+  header .clock { color: var(--sub); font-variant-numeric: tabular-nums; }
+  h1 { font-size: 20px; margin: 4px 0 12px; }
+  h2 { font-size: 15px; color: var(--sub); font-weight: 600; margin: 18px 0 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .muted { color: var(--sub); font-size: 15px; }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .tab, .seg button { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 10px;
+    padding: 12px 8px; font-size: 17px; font-weight: 600; }
+  .tab[aria-pressed="true"], .seg button[aria-pressed="true"] { background: var(--main); border-color: var(--main); color: var(--main-ink); }
+  .seg { display: grid; grid-auto-flow: column; gap: 8px; }
+  .chips { display: grid; gap: 8px; }
+  .chip { text-align: left; border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 12px; font-size: 17px; color: var(--ink); }
+  .chip small { display: block; color: var(--sub); font-size: 13px; }
+  .chip[aria-pressed="true"] { border: 2px solid var(--main); background: var(--main-soft); padding: 11px; }
+  select, input[type="text"], input[type="tel"] { width: 100%; font-size: 17px; padding: 12px; border: 1px solid var(--line);
+    border-radius: 10px; background: var(--card); color: var(--ink); }
+  label.field { display: block; margin-top: 10px; }
+  label.field span { display: block; font-size: 14px; color: var(--sub); margin-bottom: 4px; }
+  .primary { width: 100%; border: 0; border-radius: 12px; padding: 18px; font-size: 20px; font-weight: 700;
+    background: var(--main); color: var(--main-ink); margin-top: 16px; }
+  .primary:disabled { opacity: .5; }
+  .secondary { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 14px; font-size: 17px;
+    background: var(--card); color: var(--ink); margin-top: 10px; }
+  .link { background: none; border: 0; color: var(--main); font-size: 15px; padding: 8px 0; text-decoration: underline; }
+  .stepper { display: grid; grid-template-columns: 52px 1fr 52px; align-items: center; gap: 8px; }
+  .stepper button { height: 48px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); font-size: 24px; color: var(--ink); }
+  .stepper output { text-align: center; font-size: 22px; font-weight: 700; }
+  .line-head { display: flex; justify-content: space-between; align-items: center; }
+  .notice { border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-size: 15px; }
+  .notice.warn { background: var(--warn-soft); color: var(--warn); }
+  .notice.bad { background: var(--bad-soft); color: var(--bad); }
+  .notice.ok { background: var(--main-soft); color: var(--main); }
+  .member { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--line); font-size: 17px; }
+  .member input { width: 26px; height: 26px; flex: none; }
+  .member .sub { color: var(--muted); font-size: 14px; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 90px; font-size: 16px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
+  .done { text-align: center; padding: 28px 12px; }
+  .done .big { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .done .judge { display: inline-block; margin-top: 8px; padding: 4px 12px; border-radius: 999px; font-weight: 700; }
+  .judge.in { background: var(--main-soft); color: var(--main); }
+  .judge.out { background: var(--bad-soft); color: var(--bad); }
+  .judge.na { background: #eceae5; color: var(--sub); }
+  .consent { font-size: 15px; }
+  .consent ul { padding-left: 1.2em; margin: 8px 0; }
+  .hidden { display: none !important; }
+  .pre { white-space: pre-line; }
+  .mine-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+  .mine-sum b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
+  .mine-sum span { font-size: 13px; color: var(--sub); }
+  .day { border-bottom: 1px solid var(--line); padding: 10px 0; }
+  .day:last-child { border-bottom: 0; }
+  .day-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .day-date { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .day-time { font-variant-numeric: tabular-nums; }
+  .day-site { color: var(--sub); font-size: 15px; }
+  .tag { display: inline-block; margin: 4px 6px 0 0; padding: 2px 8px; border-radius: 999px; font-size: 13px; }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  .tag.info { background: #eceae5; color: var(--sub); }
+  .spinner { margin: 60px auto; width: 36px; height: 36px; border: 4px solid var(--line); border-top-color: var(--main); border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<main>
+  <header class="hidden" id="hdr"><span class="who" id="who"></span><span class="clock" id="clock"></span></header>
+  <div id="queue" class="notice warn hidden"></div>
+  <div id="app"><div class="spinner" aria-label="読み込み中"></div></div>
+  <footer id="ver" style="margin-top:28px;text-align:center;color:#9a9890;font-size:12px"></footer>
+</main>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js" charset="utf-8"></script>
+<script>
+'use strict';
+
+/* ===== 設定（髙橋工業 会社用） ===== */
+const LIFF_ID = '未設定（会社のミニアプリの本番用LIFF ID）';
+const GAS_URL = '未設定（会社の記録ファイルの窓口のアドレス）';
+const VERSION = '6（髙橋工業）';
+const STORE_NS = 'kaisha_'; // スマホに一時保存する記録の名前の頭。会社用の画面と混ざらないように分ける
+
+/* ===== 状態 ===== */
+const params = new URLSearchParams(location.search);
+const MOCK = params.get('mock') === '1';
+const S = { info: null, pos: null, posTried: false, idToken: null, mode: null, lines: [], picks: {}, leaders: {}, trouble: { has: false, kind: '', text: '' } };
+const app = document.getElementById('app');
+
+/* ===== 小道具 ===== */
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in (attrs || {})) {
+    const v = attrs[k];
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (v === true) e.setAttribute(k, '');
+    else if (v !== false && v !== null && v !== undefined) e.setAttribute(k, v);
+  }
+  kids.flat().forEach(c => { if (c !== null && c !== undefined && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c))); });
+  return e;
+}
+function clean(nodes) { return nodes.flat(Infinity).filter(n => n !== null && n !== undefined && n !== false); }
+function show(...nodes) { app.replaceChildren(...clean(nodes)); window.scrollTo(0, 0); }
+function spinner(msg) { show(el('div', { class: 'spinner', 'aria-label': msg || '読み込み中' }), msg ? el('p', { class: 'muted', style: 'text-align:center' }, msg) : null); }
+function hhmm(d) { return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+function store(key, val) { try { if (val === undefined) return JSON.parse(localStorage.getItem(key) || 'null'); localStorage.setItem(key, JSON.stringify(val)); } catch (e) { return null; } }
+function distM(a, b) {
+  const R = 6371000, r = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+function fmtDist(m) { return m < 1000 ? Math.round(m) + 'm' : (m / 1000).toFixed(1) + 'km'; }
+
+function tickClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = (now.getMonth() + 1) + '/' + now.getDate() + ' ' + hhmm(now);
+}
+
+/* ===== 通信 ===== */
+async function api(payload) {
+  if (MOCK) return mockApi(payload);
+  const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(Object.assign({ idToken: S.idToken }, payload)) });
+  if (!res.ok) throw new Error('受付窓口に届きませんでした（' + res.status + '）');
+  return res.json();
+}
+
+/* 電波がないときの保存と再送 */
+function queueGet() { return store(STORE_NS + 'demen_queue') || []; }
+function queueSet(q) { store(STORE_NS + 'demen_queue', q); renderQueue(); }
+function queueLabel(item) {
+  const p = item.payload || {};
+  const t = new Date(item.deviceTime);
+  const when = (t.getMonth() + 1) + '/' + t.getDate() + ' ' + hhmm(t);
+  return (p.action === 'report' ? '日報' : (p.type || '打刻')) + '（' + when + '）';
+}
+function renderQueue() {
+  const q = queueGet();
+  const box = document.getElementById('queue');
+  if (!q.length) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  const waiting = q.filter(i => !i.lastError);
+  const stuck = q.filter(i => i.lastError);
+  box.replaceChildren(...clean([
+    waiting.length ? el('div', null, '未送信が' + waiting.length + '件あります。電波が戻ったら自動で送ります。') : null,
+    waiting.length ? el('button', { class: 'link', onclick: flushQueue }, '今すぐ送る') : null,
+    stuck.map(item => el('div', { style: 'margin-top:8px' },
+      el('div', null, '送れなかった記録：' + queueLabel(item)),
+      el('div', null, '理由：' + item.lastError),
+      el('div', null, '事務所に連絡して、記録を直してもらってください。'),
+      el('button', { class: 'link', onclick: () => { if (confirm('事務所に伝えましたか？この記録をスマホから消します。')) { queueSet(queueGet().filter(x => x.id !== item.id)); } } }, '事務所に伝えたので消す'),
+      el('button', { class: 'link', style: 'margin-left:12px', onclick: () => { item.lastError = null; queueSet(queueGet().map(x => x.id === item.id ? item : x)); flushQueue(); } }, 'もう一度送る'))),
+  ]));
+}
+// 送れたもの・受付が受け取ったものだけを消す。受付に断られたものは理由を付けて残し、黙って消さない
+async function flushQueue() {
+  const q = queueGet();
+  if (!q.length || !navigator.onLine) return;
+  const keep = [];
+  for (const item of q) {
+    if (item.lastError) { keep.push(item); continue; }
+    try {
+      const r = await api(Object.assign({}, item.payload, { offline: true, deviceTime: item.deviceTime }));
+      if (r.ok) continue;
+      item.lastError = r.already ? 'この日はすでに日報が送られていました。内容が違う場合は、画面から修正してください' : (r.error || '受付で断られました');
+      keep.push(item);
+    } catch (e) { keep.push(item); }
+  }
+  queueSet(keep);
+}
+function isNetworkError(e) { return !navigator.onLine || e instanceof TypeError; }
+
+/* ===== 位置 ===== */
+function getPosition() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+  });
+}
+
+/* ===== 現場の並べ方 ===== */
+function suggestedSites() {
+  const sites = S.info.sites || [];
+  if (S.pos) {
+    const withPos = sites.filter(s => s.lat !== null && s.lng !== null)
+      .map(s => Object.assign({ d: distM(S.pos, s) }, s)).sort((a, b) => a.d - b.d);
+    if (withPos.length) return withPos.slice(0, 3);
+  }
+  const byId = {}; sites.forEach(s => byId[s.id] = s);
+  const recent = (S.info.recentSiteIds || []).map(id => byId[id]).filter(Boolean);
+  const rest = sites.filter(s => recent.indexOf(s) < 0);
+  return recent.concat(rest).slice(0, 3);
+}
+
+/* 現場を選ぶ部品。pick = { siteId, siteName } を key ごとに S.picks に持つ */
+function sitePicker(key, opts) {
+  const pick = S.picks[key] || (S.picks[key] = { siteId: '', siteName: '' });
+  const wrap = el('div');
+  function render() {
+    const sugg = suggestedSites();
+    if ((pick.auto || (!pick.siteId && !pick.free)) && sugg[0] && opts && opts.autoFirst) { pick.siteId = sugg[0].id; pick.auto = true; }
+    const chips = el('div', { class: 'chips' }, sugg.map(s => el('button', {
+      class: 'chip', type: 'button', 'aria-pressed': String(pick.siteId === s.id && !pick.free),
+      onclick: () => { pick.siteId = s.id; pick.siteName = ''; pick.free = false; pick.auto = false; render(); if (opts && opts.onChange) opts.onChange(); },
+    }, s.name, s.d !== undefined ? el('small', null, 'ここから約' + fmtDist(s.d)) : null)));
+
+    const all = (S.info.sites || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    const sel = el('select', {
+      onchange: e => {
+        const v = e.target.value;
+        if (v === '__free') { pick.free = true; pick.siteId = ''; pick.auto = false; }
+        else if (v) { pick.free = false; pick.siteId = v; pick.siteName = ''; pick.auto = false; }
+        render();
+        if (opts && opts.onChange) opts.onChange();
+      },
+    },
+      el('option', { value: '' }, 'ほかの現場を探す…'),
+      all.map(s => el('option', { value: s.id, selected: pick.siteId === s.id && !sugg.some(x => x.id === s.id) }, s.name)),
+      (S.info.oldSites || []).length ? el('optgroup', { label: '以前の現場（終了）' },
+        S.info.oldSites.slice().sort((a, b) => a.name.localeCompare(b.name, 'ja')).map(s => el('option', { value: s.id, selected: pick.siteId === s.id }, s.name))) : null,
+      el('option', { value: '__free', selected: !!pick.free }, '一覧にない現場（名前を入力）')
+    );
+    const free = pick.free ? el('label', { class: 'field' }, el('span', null, '現場の名前'),
+      el('input', { type: 'text', maxlength: '40', value: pick.siteName || '', placeholder: '例：○○様邸 照明工事', oninput: e => { pick.siteName = e.target.value; } })) : null;
+    wrap.replaceChildren(...clean([chips, el('div', { style: 'margin-top:8px' }, sel), free]));
+  }
+  render();
+  wrap.rerender = render;
+  return wrap;
+}
+function pickPayload(key) {
+  const p = S.picks[key] || {};
+  if (p.free) return { siteId: '', siteName: (p.siteName || '').trim() };
+  return { siteId: p.siteId || '', siteName: '' };
+}
+function pickIsValid(key) { const p = pickPayload(key); return !!(p.siteId || p.siteName); }
+
+/* 現場リーダーを選ぶ部品。その現場で前回選んだリーダーを最初から選んでおく */
+function needLeader() { return (S.info.leaders || []).length > 0; }
+function leaderSelect(key) {
+  const wrap = el('div');
+  function render() {
+    const siteId = pickPayload(key).siteId;
+    const cur = S.leaders[key];
+    if (!cur || !cur.manual) S.leaders[key] = { id: (S.info.lastLeader || {})[siteId] || '', manual: false };
+    const sel = el('select', { onchange: e => { S.leaders[key] = { id: e.target.value, manual: true }; } },
+      el('option', { value: '' }, '現場リーダーを選んでください'),
+      (S.info.leaders || []).map(l => el('option', { value: l.id, selected: S.leaders[key].id === l.id }, l.name + (l.id === S.info.staff.id ? '（自分）' : ''))));
+    wrap.replaceChildren(el('h2', null, '現場リーダー'), sel);
+  }
+  render();
+  wrap.rerender = render;
+  return wrap;
+}
+function leaderOf(key) { return (S.leaders[key] || {}).id || ''; }
+
+/* トラブルの欄（退勤・日報） */
+function troubleBox() {
+  const t = S.trouble;
+  const wrap = el('div');
+  function render() {
+    const seg = el('div', { class: 'seg' }, [[false, '無し'], [true, '有り']].map(([v, label]) =>
+      el('button', { type: 'button', 'aria-pressed': String(t.has === v), onclick: () => { t.has = v; render(); } }, label)));
+    const more = t.has ? [
+      el('div', { class: 'notice warn' }, 'けがや事故など急ぎのときは、まず電話してください。'),
+      el('label', { class: 'field' }, el('span', null, '種類'),
+        el('select', { onchange: e => { t.kind = e.target.value; } },
+          el('option', { value: '' }, '選んでください'),
+          (S.info.troubleKinds || []).map(k => el('option', { value: k, selected: t.kind === k }, k)))),
+      el('label', { class: 'field' }, el('span', null, '内容'),
+        el('textarea', { maxlength: '500', placeholder: 'いつ・どこで・何があったか', oninput: e => { t.text = e.target.value; } }, t.text || '')),
+    ] : [];
+    wrap.replaceChildren(...clean([el('h2', null, 'トラブル'), seg, more]));
+  }
+  render();
+  return wrap;
+}
+function troublePayload() {
+  const t = S.trouble;
+  if (!t.has) return { has: false };
+  return { has: true, kind: t.kind, text: (t.text || '').trim() };
+}
+function troubleIsValid() {
+  const t = S.trouble;
+  if (!t.has) return true;
+  if (!t.kind) { alert('トラブルの種類を選んでください'); return false; }
+  if (!(t.text || '').trim()) { alert('トラブルの内容を書いてください'); return false; }
+  return true;
+}
+
+/* ===== 画面：エラー・完了 ===== */
+function showError(msg, retry) {
+  show(
+    el('div', { class: 'notice bad' }, msg),
+    retry ? el('button', { class: 'primary', onclick: retry }, 'もう一度') : null,
+    el('button', { class: 'secondary', onclick: closeApp }, '閉じる')
+  );
+}
+function showDone(title, big, sub, judge, notes, cancel) {
+  const cls = judge === '範囲内' ? 'in' : judge === '範囲外' ? 'out' : 'na';
+  const args = arguments;
+  let cancelBtn = null;
+  if (cancel && cancel.target && cancel.until) {
+    const until = new Date(cancel.until).getTime();
+    cancelBtn = el('button', { class: 'secondary', onclick: () => askCancel(cancel, () => showDone.apply(null, args)) });
+    const tick = () => {
+      const left = Math.round((until - Date.now()) / 1000);
+      if (left <= 0 || !document.body.contains(cancelBtn)) { cancelBtn.remove(); clearInterval(timer); return; }
+      cancelBtn.textContent = '間違えたので取り消す（あと' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') + '）';
+    };
+    const timer = setInterval(tick, 1000);
+    setTimeout(tick, 0);
+  }
+  show(el('div', { class: 'card done' },
+    el('div', { class: 'muted' }, title),
+    el('div', { class: 'big' }, big),
+    sub ? el('div', { class: 'pre' }, sub) : null,
+    judge ? el('span', { class: 'judge ' + cls }, judge) : null
+  ),
+  (notes || []).map(n => el('div', { class: 'notice warn' }, n)),
+  el('button', { class: 'primary', onclick: closeApp }, '閉じる'),
+  cancelBtn,
+  mineLink());
+}
+
+/* ===== 画面：自分の記録 ===== */
+function mineLink() { return el('button', { class: 'link', style: 'display:block;margin:18px auto 0', onclick: () => showMine('this') }, '今月の自分の記録を見る'); }
+const WD = ['日', '月', '火', '水', '木', '金', '土'];
+function dayLabel(d) { const t = new Date(d.replace(/\//g, '-') + 'T00:00:00+09:00'); return Number(d.slice(5, 7)) + '/' + Number(d.slice(8, 10)) + '（' + WD[t.getDay()] + '）'; }
+async function showMine(month) {
+  spinner('記録を読み込んでいます');
+  let r;
+  try { r = await api({ action: 'mine', month: month }); }
+  catch (e) { return showError('記録を読み込めませんでした。電波の良いところでもう一度お試しください。', () => showMine(month)); }
+  if (!r.ok) return showError(r.error || '記録を読み込めませんでした。');
+  const isSub = r.kubun === '下請';
+  const seg = el('div', { class: 'seg' },
+    el('button', { 'aria-pressed': String(r.month === 'this'), onclick: () => showMine('this') }, '今月'),
+    el('button', { 'aria-pressed': String(r.month === 'prev'), onclick: () => showMine('prev') }, '先月'));
+  const sum = el('div', { class: 'card mine-sum' },
+    el('div', null, el('b', null, r.summary.days), el('span', null, isSub ? '報告した日' : '出勤した日')),
+    isSub ? el('div', null, el('b', null, r.summary.total), el('span', null, '延べ人工'))
+      : el('div', null, el('b', null, r.summary.hours || '0:00'), el('span', null, '拘束時間の合計')),
+    el('div', null, el('b', { style: r.summary.check ? 'color:var(--warn)' : '' }, r.summary.check), el('span', null, '確認が必要')));
+  const list = r.rows.length ? el('div', { class: 'card' }, r.rows.map(d => el('div', { class: 'day' },
+    el('div', { class: 'day-head' },
+      el('span', { class: 'day-date' }, dayLabel(d.date)),
+      isSub
+        ? el('span', { class: 'day-time' }, (d.ninku === 1 ? '1日' : d.ninku === 0.5 ? '半日' : d.ninku === '混在' ? '1日・半日' : '') + (d.count ? '×' + d.count + '人' : '') + '　延べ' + d.total)
+        : el('span', { class: 'day-time' }, (d.in || '--:--') + ' 〜 ' + (d.out || '--:--') + (d.duration ? '　' + d.duration : ''))),
+    el('div', { class: 'day-site' }, d.site || '（現場なし）'),
+    d.notes.length ? el('div', null, d.notes.map(n => el('span', { class: 'tag ' + (n === '事務所が修正しました' || n === '勤務中' ? 'info' : 'warn') }, n))) : null
+  ))) : el('div', { class: 'card muted' }, 'この月の記録はまだありません。');
+  S.onPos = null;
+  show(
+    el('h1', null, r.label + 'の自分の記録'),
+    seg, el('div', { style: 'height:12px' }), sum, list,
+    el('p', { class: 'muted' }, '記録が違っているときは、事務所に連絡してください。「確認が必要」の日は、事務所が直すまで表示が残ります。'),
+    el('button', { class: 'primary', onclick: () => isSub ? reloadTo('日報') : reloadTo('出勤') }, isSub ? '日報の画面へ' : '打刻の画面へ'),
+    el('button', { class: 'secondary', onclick: closeApp }, '閉じる'));
+}
+
+/* ===== 画面：取り消し ===== */
+function askCancel(cancel, back) {
+  show(
+    el('h1', null, '取り消しますか'),
+    el('div', { class: 'card pre' }, cancel.label),
+    el('p', null, '取り消すと、この記録はなかったことになります（記録の跡は事務所に残ります）。'),
+    el('button', { class: 'primary', onclick: () => doCancel(cancel) }, '取り消す'),
+    el('button', { class: 'secondary', onclick: back }, 'やめて戻る')
+  );
+}
+async function doCancel(cancel) {
+  spinner('取り消しています');
+  try {
+    const r = await api({ action: 'cancel', target: cancel.target });
+    if (!r.ok) return showError(r.error || '取り消せませんでした。');
+    const isSub = S.info.staff.kubun === '下請';
+    show(
+      el('div', { class: 'notice ok' }, '取り消しました：' + r.cancelled),
+      isSub ? el('button', { class: 'primary', onclick: () => reloadTo('日報') }, '日報を送り直す')
+        : [el('button', { class: 'primary', onclick: () => reloadTo('出勤') }, '出勤を記録し直す'),
+           el('button', { class: 'secondary', onclick: () => reloadTo('退勤') }, '退勤を記録し直す')],
+      el('button', { class: 'secondary', onclick: closeApp }, '閉じる')
+    );
+  } catch (e) {
+    showError('取り消しを送れませんでした。電波の良いところでもう一度お試しください。', () => doCancel(cancel));
+  }
+}
+async function reloadTo(mode) {
+  spinner('読み込んでいます');
+  try {
+    const info = await api({ action: 'init' });
+    if (!info.ok) return showError(info.error || '読み込めませんでした。');
+    S.info = info; S.picks = {}; S.lines = []; S.memo = ''; S.workDate = null;
+    if (mode === '日報') { S.mode = '日報'; showReport(); } else showPunch(mode);
+  } catch (e) { showError('読み込めませんでした。', () => reloadTo(mode)); }
+}
+function closeApp() { if (!MOCK && window.liff && liff.isInClient()) liff.closeWindow(); else show(el('p', { class: 'muted' }, 'この画面は閉じて構いません。')); }
+
+/* ===== 画面：初回登録 ===== */
+function showRegister(err) {
+  let code = '';
+  const btn = el('button', { class: 'primary', disabled: true, onclick: () => doRegister(code, undefined) }, '登録する');
+  show(
+    el('h1', null, 'はじめての登録'),
+    err ? el('div', { class: 'notice bad' }, err) : null,
+    el('p', null, '事務所から聞いた6桁の登録コード（LINEを入れ直したときは再登録コード）を入れてください。'),
+    el('input', { type: 'tel', inputmode: 'numeric', maxlength: '6', placeholder: '000000', autocomplete: 'one-time-code',
+      style: 'font-size:28px;text-align:center;letter-spacing:.3em',
+      oninput: e => { code = e.target.value.replace(/\D/g, '').slice(0, 6); e.target.value = code; btn.disabled = code.length !== 6; } }),
+    btn
+  );
+}
+async function doRegister(code, consent) {
+  spinner('登録しています');
+  try {
+    const r = await api({ action: 'register', code: code, consent: consent });
+    if (!r.ok) return showRegister(r.error);
+    if (r.needConsent) return showConsent(code, r.name);
+    await start();
+  } catch (e) { showError('登録できませんでした。電波の良いところでもう一度お試しください。', () => doRegister(code, consent)); }
+}
+async function doConsent() {
+  spinner('記録しています');
+  try {
+    const r = await api({ action: 'consent' });
+    if (!r.ok) return showError(r.error || '記録できませんでした。', doConsent);
+    await start();
+  } catch (e) { showError('記録できませんでした。電波の良いところでもう一度お試しください。', doConsent); }
+}
+function showConsent(code, name) {
+  show(
+    el('h1', null, name + 'さん、位置情報についての確認'),
+    el('div', { class: 'card consent' },
+      el('p', null, 'この会社では、打刻したときに、スマホの位置を1回だけ記録します。'),
+      el('ul', null,
+        el('li', null, '目的：現場で出勤・退勤したことを確かめるため'),
+        el('li', null, '取るのは「打刻・日報の画面を開いたときの1回」だけで、移動の追跡はしません'),
+        el('li', null, '見られるのは社長と事務担当だけです'),
+        el('li', null, '位置を許可しなくても打刻はできます（「位置なし」と記録されます）')
+      )
+    ),
+    el('button', { class: 'primary', onclick: () => code ? doRegister(code, true) : doConsent() }, code ? '同意して登録する' : '同意して始める'),
+    el('button', { class: 'secondary', onclick: () => showError('同意しない場合は、事務所に連絡してください。位置を取らない設定に変えてもらえます。') }, '同意しない')
+  );
+}
+
+/* ===== 画面：社員の出勤・退勤 ===== */
+function showPunch(type) {
+  S.mode = type;
+  const info = S.info;
+  const tabs = el('div', { class: 'tabs' },
+    el('button', { class: 'tab', 'aria-pressed': String(type === '出勤'), onclick: () => showPunch('出勤') }, '出勤'),
+    el('button', { class: 'tab', 'aria-pressed': String(type === '退勤'), onclick: () => showPunch('退勤') }, '退勤'));
+
+  const posNote = el('div', { class: 'muted' });
+  function updatePosNote() {
+    if (!info.staff.geo) posNote.textContent = '';
+    else if (S.pos) posNote.textContent = '位置を確認しました（誤差 約' + Math.round(S.pos.acc) + 'm）';
+    else if (S.posTried) posNote.textContent = '位置が取れませんでした。このまま打刻すると「位置なし」になります。';
+    else posNote.textContent = '位置を確認しています…';
+  }
+  updatePosNote();
+
+  let picker = null, body, guard = false;
+  let leaderBox = { rerender: () => {} };
+  const memo = el('input', { type: 'text', maxlength: '100', placeholder: type === '退勤' ? '残業の理由など（任意）' : '一言メモ（任意）' });
+  const openToday = info.openShift && info.openShift.workDate === info.today;
+
+  if (type === '出勤') {
+    if (openToday) {
+      guard = true;
+      body = [el('div', { class: 'notice warn' }, '今日はすでに ' + info.openShift.time + ' に出勤しています（' + info.openShift.siteName + '）。退勤の押し間違いではありませんか？'),
+        el('button', { class: 'primary', onclick: () => showPunch('退勤') }, '退勤の画面へ')];
+    }
+    picker = sitePicker('punch', { autoFirst: true, onChange: () => leaderBox.rerender() });
+  } else {
+    S.picks.punch = S.picks.punch || { siteId: '', siteName: '' };
+    if (info.openShift) {
+      body = el('div', { class: 'card' }, el('div', { class: 'muted' }, '今日の出勤'),
+        el('div', { style: 'font-size:22px;font-weight:700' }, info.openShift.time + '　' + info.openShift.siteName));
+    } else {
+      guard = true;
+      body = [el('div', { class: 'notice warn' }, '今日の出勤の記録がありません。出勤の押し間違いではありませんか？'),
+        el('button', { class: 'primary', onclick: () => showPunch('出勤') }, '出勤の画面へ')];
+      picker = sitePicker('punch', { autoFirst: true });
+    }
+  }
+  const sendLabel = !guard ? type + 'する' : type === '出勤' ? '2回目の出勤として記録する' : '退勤だけ記録する';
+  const send = el('button', { class: guard ? 'secondary' : 'primary', onclick: () => doPunch(type, memo.value) }, sendLabel);
+  S.onPos = () => { updatePosNote(); if (picker) picker.rerender(); };
+
+  const changeSite = (type === '退勤' && info.openShift) ? el('button', { class: 'link', onclick: () => {
+    S.picks.punch = { siteId: '', siteName: '' };
+    const p = sitePicker('punch', { autoFirst: false });
+    changeBox.replaceChildren(el('h2', null, '今日の現場を選び直す'), p);
+    picker = p;
+  } }, '間違った現場で出勤したときは、ここで選び直す') : null;
+  if (type === '出勤' && needLeader()) leaderBox = leaderSelect('punch');
+  if (type === '退勤') S.trouble = S.trouble.mode === '退勤' ? S.trouble : { has: false, kind: '', text: '', mode: '退勤' };
+  const changeBox = el('div');
+
+  show(tabs, body || null,
+    picker && !changeSite ? el('h2', null, '現場') : null,
+    picker, changeSite, changeBox,
+    type === '出勤' && needLeader() ? leaderBox : null,
+    type === '退勤' ? troubleBox() : null,
+    el('label', { class: 'field' }, el('span', null, 'メモ'), memo),
+    el('div', { style: 'margin-top:10px' }, posNote),
+    send,
+    info.isLeader ? el('button', { class: 'secondary', onclick: () => showManage() }, 'リーダーの確認（管理）') : null,
+    mineLink());
+}
+
+async function doPunch(type, memo) {
+  if (type === '出勤' && !pickIsValid('punch')) { alert('現場を選んでください'); return; }
+  if (type === '出勤' && needLeader() && !leaderOf('punch')) { alert('現場リーダーを選んでください'); return; }
+  if (type === '退勤' && !troubleIsValid()) return;
+  const pick = pickPayload('punch');
+  const payload = Object.assign({ action: 'punch', type: type, memo: memo }, pick);
+  if (type === '出勤') payload.leaderId = leaderOf('punch');
+  if (type === '退勤') payload.trouble = troublePayload();
+  if (S.info.staff.geo && S.pos) Object.assign(payload, { lat: S.pos.lat, lng: S.pos.lng, acc: S.pos.acc });
+  await sendRecord(payload, r => {
+    const sub = (r.siteName || '') + (r.duration ? '　拘束 ' + r.duration : '');
+    showDone(type + 'を記録しました', r.time, sub, r.judge, r.notes,
+      r.cancel ? Object.assign({ label: type + ' ' + r.time + (r.siteName ? '　' + r.siteName : '') }, r.cancel) : null);
+    if (type === '退勤') S.trouble = { has: false, kind: '', text: '' };
+  });
+}
+
+/* ===== 画面：下請の日報 ===== */
+function showReport(errMsg) {
+  const info = S.info;
+  if (!S.lines.length) S.lines = [{ key: 'L' + Date.now(), ninku: 1, count: 1 }];
+  if (!S.workDate) S.workDate = info.today;
+
+  const dateSeg = el('div', { class: 'seg' },
+    [[info.today, '今日'], [info.yesterday, '昨日']].map(([d, label]) => el('button', {
+      'aria-pressed': String(S.workDate === d), onclick: () => { S.workDate = d; showReport(); },
+    }, label + '（' + d.slice(5) + '）')));
+
+  const done = (info.reportedDates || {})[S.workDate];
+  const doneNote = done ? el('div', { class: 'notice ok' }, 'この日は報告済みです：' + done.map(x => x.siteName + ' ' + (x.ninku === 0.5 ? '半日' : '1日') + '×' + x.count + '人').join('、')) : null;
+
+  const lineCards = S.lines.map((ln, i) => {
+    const ninkuSeg = el('div', { class: 'seg' },
+      [[1, '1日'], [0.5, '半日']].map(([v, label]) => el('button', { 'aria-pressed': String(ln.ninku === v), onclick: () => { ln.ninku = v; showReport(); } }, label)));
+    const count = info.staff.oyakata ? el('label', { class: 'field' }, el('span', null, '人数（自分を含む）'),
+      el('div', { class: 'stepper' },
+        el('button', { type: 'button', onclick: () => { ln.count = Math.max(1, ln.count - 1); showReport(); } }, '−'),
+        el('output', null, ln.count + '人'),
+        el('button', { type: 'button', onclick: () => { ln.count = Math.min(30, ln.count + 1); showReport(); } }, '＋'))) : null;
+    return el('div', { class: 'card' },
+      el('div', { class: 'line-head' }, el('strong', null, S.lines.length > 1 ? (i + 1) + '行目' : '現場'),
+        S.lines.length > 1 ? el('button', { class: 'link', onclick: () => { S.lines.splice(i, 1); delete S.picks[ln.key]; showReport(); } }, 'この行を消す') : null),
+      sitePicker(ln.key, { autoFirst: true, onChange: () => showReport() }),
+      needLeader() ? leaderSelect(ln.key) : null,
+      el('h2', null, '1日か半日か'), ninkuSeg, count);
+  });
+
+  const addLine = S.lines.length < 5 ? el('button', { class: 'secondary', onclick: () => { S.lines.push({ key: 'L' + Date.now(), ninku: 1, count: 1 }); showReport(); } },
+    info.staff.oyakata ? '＋ 行を追加（半日の人がいる・別の現場）' : '＋ 別の現場を追加') : null;
+  const memo = el('input', { type: 'text', maxlength: '100', placeholder: '一言メモ（任意）', value: S.memo || '', oninput: e => { S.memo = e.target.value; } });
+  S.onPos = () => showReport();
+  if (S.trouble.mode !== '日報') S.trouble = { has: false, kind: '', text: '', mode: '日報' };
+
+  show(
+    el('h1', null, '日報'),
+    errMsg ? el('div', { class: 'notice bad' }, errMsg) : null,
+    el('h2', null, '作業日'), dateSeg, doneNote,
+    lineCards, addLine,
+    troubleBox(),
+    el('label', { class: 'field' }, el('span', null, 'メモ'), memo),
+    el('button', { class: 'primary', onclick: () => doReport(done ? 'ask' : 'new') }, '報告する'),
+    info.isLeader ? el('button', { class: 'secondary', onclick: () => showManage() }, 'リーダーの確認（管理）') : null,
+    mineLink()
+  );
+}
+
+async function doReport(mode) {
+  for (const ln of S.lines) if (!pickIsValid(ln.key)) { alert('現場を選んでください'); return; }
+  if (needLeader()) for (const ln of S.lines) if (!leaderOf(ln.key)) { alert('現場リーダーを選んでください'); return; }
+  if (!troubleIsValid()) return;
+  if (mode === 'ask') return askReportMode();
+  const payload = {
+    action: 'report', mode: mode, workDate: S.workDate, memo: S.memo || '',
+    lines: S.lines.map(ln => Object.assign({ ninku: ln.ninku, count: S.info.staff.oyakata ? ln.count : 1, leaderId: leaderOf(ln.key) }, pickPayload(ln.key))),
+    trouble: troublePayload(),
+  };
+  if (S.info.staff.geo && S.pos) Object.assign(payload, { lat: S.pos.lat, lng: S.pos.lng, acc: S.pos.acc });
+  await sendRecord(payload, r => {
+    if (!r.ok && r.already) return askReportMode(r.summary);
+    showDone('日報を記録しました（' + r.mode + '）', r.workDate.slice(5), r.saved.join('\n'), null, r.notes || [],
+      r.cancel ? Object.assign({ label: '日報 ' + r.workDate.slice(5) + '\n' + r.saved.join('\n') }, r.cancel) : null);
+    S.lines = []; S.picks = {}; S.memo = ''; S.leaders = {}; S.trouble = { has: false, kind: '', text: '' };
+  });
+}
+function askReportMode(summary) {
+  const done = summary || ((S.info.reportedDates || {})[S.workDate] || []).map(x => x.siteName + ' ' + (x.ninku === 0.5 ? '半日' : '1日') + '×' + x.count + '人');
+  show(
+    el('h1', null, 'この日は報告済みです'),
+    el('div', { class: 'card pre' }, done.join('\n') || '（内容を読み込めませんでした）'),
+    el('p', null, '今回の内容をどうしますか。'),
+    el('button', { class: 'primary', onclick: () => doReport('fix') }, '前の報告と置き換える（修正）'),
+    el('button', { class: 'secondary', onclick: () => doReport('add') }, '前の報告に足す（別の現場など）'),
+    el('button', { class: 'secondary', onclick: () => showReport() }, 'やめて戻る')
+  );
+}
+
+/* ===== 画面：使い方（困ったとき） ===== */
+function showHelp() {
+  const tel = S.info.officeTel;
+  const qa = [
+    ['出勤・退勤のしかた', '現場に着いたら下のメニューの「出勤」、作業が終わったら「退勤」を押します。現場と現場リーダーを選んで、ボタンを押せば終わりです。'],
+    ['押し間違えた', '押してから5分以内なら、完了画面の「間違えたので取り消す」で取り消せます。5分を過ぎたら、事務所に連絡してください。'],
+    ['間違った現場で出勤した', '退勤のときに「間違った現場で出勤したときは、ここで選び直す」を押して、正しい現場を選んでください。'],
+    ['出勤を押し忘れた・退勤を押し忘れた', '気づいたときに事務所へ連絡してください。事務所で直します。'],
+    ['トラブルがあった', '退勤（協力会社の方は日報）の「トラブル」で「有り」を選び、種類と内容を書いて送ると、社長に知らせが届きます。けがや事故など急ぎのときは、まず電話してください。'],
+    ['日報のしかた（協力会社の方）', '「日報」を押し、作業日・現場・現場リーダー・1日か半日か（親方の方は人数も）を選んで「報告する」を押します。'],
+    ['現場リーダーの確認（管理）', 'リーダーの方は「管理」を押すと、その日にあなたを選んだ人が並びます。来ていない人だけチェックを外して「確認する」を押してください。忘れた日も、締めまではさかのぼって確認できます。'],
+    ['電波がない', 'スマホに保存され、電波が戻ったら自動で送られます。画面上に「送っていない記録」が出ている間は、まだ届いていません。'],
+    ['スマホやLINEを変えた', '事務所で新しい登録コードをもらい、打刻画面で入れるか、LINEのトークで「登録 123456」の形で送ってください。'],
+  ];
+  show(
+    el('h1', null, '使い方・困ったとき'),
+    qa.map(([q, a]) => el('details', { class: 'card' }, el('summary', { style: 'font-weight:700;font-size:17px' }, q), el('p', null, a))),
+    tel ? el('a', { class: 'primary', href: 'tel:' + tel.replace(/[^0-9+]/g, ''), style: 'display:block;text-align:center;text-decoration:none' }, '事務所に電話する（' + tel + '）') : el('p', { class: 'muted' }, 'それでも分からないときは、事務所に連絡してください。'),
+    el('button', { class: 'secondary', onclick: closeApp }, '閉じる')
+  );
+}
+
+/* ===== 画面：管理（現場リーダーの確認） ===== */
+async function showManage(date) {
+  spinner('読み込んでいます');
+  let v;
+  try { v = await api({ action: 'leaderView', date: date || '' }); }
+  catch (e) { return showError('読み込めませんでした。電波の良いところでもう一度お試しください。', () => showManage(date)); }
+  if (!v.ok) return showError(v.error || '読み込めませんでした。', () => showManage(date));
+  if (!v.isLeader) return show(el('h1', null, '管理'), el('div', { class: 'notice warn' }, '「管理」は現場リーダーの方が使う画面です。'), el('button', { class: 'primary', onclick: closeApp }, '閉じる'));
+  const dates = [v.today].concat((v.pending || []).filter(d => d !== v.today));
+  if (dates.indexOf(v.date) < 0) dates.push(v.date);
+  const dateSeg = el('div', { class: 'chips' }, dates.map(d => el('button', { class: 'chip', type: 'button', 'aria-pressed': String(d === v.date), onclick: () => showManage(d) },
+    (d === v.today ? '今日 ' : '') + dayLabel(d), (v.pending || []).indexOf(d) >= 0 ? el('small', null, '確認まだ') : null)));
+  const checks = {};
+  const list = v.people.length ? v.people.map(p => {
+    checks[p.id] = p.state !== '来ていない';
+    const box = el('input', { type: 'checkbox', checked: checks[p.id], onchange: e => { checks[p.id] = e.target.checked; } });
+    const sub = p.kubun === '下請' ? (p.sites.join('、') + '　' + p.count + '人') : ('出勤 ' + (p.in || '—') + '　退勤 ' + (p.out || 'まだ') + (p.sites.length ? '　' + p.sites.join('、') : ''));
+    const st = p.state === '確認済み' ? '確認済み' : p.state === '来ていない' ? '来ていない' : '';
+    return el('label', { class: 'member' }, box, el('div', null, el('div', null, p.name + (p.id === S.info.staff.id ? '（自分）' : '')), el('div', { class: 'sub' }, sub + (st ? '　［' + st + '］' : ''))));
+  }) : [el('p', { class: 'muted' }, 'この日に、あなたをリーダーに選んで出勤した人はいません。')];
+  const send = v.people.length ? el('button', { class: 'primary', onclick: async () => {
+    spinner('確認を送っています');
+    try {
+      const r = await api({ action: 'leaderConfirm', date: v.date, items: v.people.map(p => ({ id: p.id, present: !!checks[p.id] })) });
+      if (!r.ok) return showError(r.error || '確認できませんでした。', () => showManage(v.date));
+      showDone('確認しました', dayLabel(r.date), r.count + '人' + (r.absent ? '（来ていない ' + r.absent + '人）' : ''), null,
+        r.absent ? ['来ていない人は、事務所の確認が必要な記録に出ます。'] : [], null);
+    } catch (e) { showError('確認を送れませんでした。電波の良いところでもう一度お試しください。', () => showManage(v.date)); }
+  } }, v.confirmed ? 'もう一度確認する' : '確認する') : null;
+  show(
+    el('h1', null, '管理（現場リーダーの確認）'),
+    el('h2', null, '確認する日'),
+    dateSeg,
+    v.confirmed ? el('div', { class: 'notice ok' }, 'この日は確認済みです。直すときは、チェックを変えてもう一度押してください。') : null,
+    el('p', { class: 'muted' }, '来ていない人だけチェックを外して、「確認する」を押してください。'),
+    el('div', { class: 'card' }, list),
+    send,
+    el('button', { class: 'secondary', onclick: () => S.info.staff.kubun === '下請' ? showReport() : showPunch('出勤') }, '戻る')
+  );
+}
+
+/* ===== 送信（電波がなければ保存） ===== */
+async function sendRecord(payload, onOk) {
+  spinner('送っています');
+  try {
+    const r = await api(payload);
+    if (r.ok || r.already) return onOk(r);
+    showError(r.error || '記録できませんでした。', () => S.mode === '日報' ? showReport() : showPunch(S.mode));
+  } catch (e) {
+    if (isNetworkError(e)) {
+      const q = queueGet();
+      q.push({ id: 'Q' + Date.now() + Math.random().toString(36).slice(2, 6), payload: payload, deviceTime: new Date().toISOString() });
+      queueSet(q);
+      showDone('電波がないため、スマホに保存しました', hhmm(new Date()), '電波が戻ったら自動で送ります。この画面は閉じて構いません。', null, []);
+    } else {
+      showError('記録できませんでした。少し待ってもう一度お試しください。（' + e.message + '）', () => sendRecord(payload, onOk));
+    }
+  }
+}
+
+/* ===== 起動 ===== */
+async function start() {
+  spinner('読み込んでいます');
+  let info;
+  try { info = await api({ action: 'init' }); }
+  catch (e) {
+    renderQueue();
+    return showError('受付窓口につながりませんでした。電波の良いところで開き直してください。', start);
+  }
+  if (!info.ok) return showError(info.error || '読み込めませんでした。', start);
+  if (!info.registered) return showRegister();
+  if (info.needConsent) return showConsent(null, info.name); // LINEのトークで登録した人は、ここで位置の記録に同意してもらう
+  S.info = info;
+  document.getElementById('who').textContent = info.staff.name + 'さん';
+  document.getElementById('hdr').classList.remove('hidden');
+  tickClock(); setInterval(tickClock, 15000);
+  flushQueue();
+
+  if (info.staff.geo) {
+    getPosition().then(p => { S.pos = p; S.posTried = true; if (S.onPos) S.onPos(); });
+  }
+  // LINEの中で開くと、mode などの指定は liff.init の後で URL に戻るので、ここで読み直す
+  const m = new URLSearchParams(location.search).get('mode');
+  if (m === 'mine') return showMine('this');
+  if (m === 'manage') return showManage();
+  if (m === 'help') return showHelp();
+  if (info.staff.kubun === '下請') { S.mode = '日報'; showReport(); }
+  else showPunch(m === 'out' ? '退勤' : '出勤');
+}
+
+async function boot() {
+  document.getElementById('ver').textContent = '出面打刻 ' + VERSION;
+  renderQueue();
+  window.addEventListener('online', flushQueue);
+  if (MOCK) return start();
+  if (/未設定/.test(LIFF_ID + GAS_URL)) return showError('この画面はまだ準備中です。事務所の案内があるまでお待ちください。', () => location.reload());
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+    S.idToken = liff.getIDToken();
+    if (!S.idToken) return showError('LINEの本人確認ができませんでした。いったん閉じて開き直してください。', () => location.reload());
+    await start();
+  } catch (e) {
+    showError('LINEの準備ができませんでした。LINEのアプリから開いてください。（' + e.message + '）', () => location.reload());
+  }
+}
+
+/* ===== 画面確認用の模擬（?mock=1 のときだけ） ===== */
+function mockApi(p) {
+  const kubun = params.get('kubun') === 'sub' ? '下請' : '社員';
+  return new Promise(res => setTimeout(() => {
+    if (params.get('reg') === 'no' && p.action !== 'register') return res({ ok: true, registered: false });
+    if (p.action === 'register') return res(p.consent ? { ok: true, registered: true } : { ok: true, needConsent: true, name: '試作 太郎' });
+    if (p.action === 'init' && params.get('consent') === 'need' && !window.__consented) return res({ ok: true, registered: true, needConsent: true, name: '試作 太郎' });
+    if (p.action === 'consent') { window.__consented = true; return res({ ok: true }); }
+    if (p.action === 'init') return res({ ok: true, registered: true, today: '2026/10/27', yesterday: '2026/10/26',
+      staff: { id: 'E001', name: '試作 太郎', kubun: kubun, geo: true, oyakata: true },
+      sites: [{ id: 'G001', name: '舞鶴病院 改修', lat: 35.4745, lng: 135.386 }, { id: 'G002', name: '東舞鶴駅前ビル 照明', lat: 35.468, lng: 135.395 }, { id: 'G003', name: '倉庫（社内）', lat: null, lng: null }],
+      recentSiteIds: ['G002'], oldSites: [{ id: 'G009', name: '綾部 倉庫 改修（終了）', lat: null, lng: null }], openShift: params.get('open') === '1' ? { time: '07:58', siteId: 'G001', siteName: '舞鶴病院 改修', workDate: '2026/10/27' } : null,
+      reportedDates: params.get('done') === '1' ? { '2026/10/27': [{ siteName: '舞鶴病院 改修', ninku: 1, count: 3 }] } : {},
+      leaders: [{ id: 'J001', name: '高橋 リーダー' }, { id: 'E001', name: '試作 太郎' }], lastLeader: { G002: 'J001' }, isLeader: params.get('leader') === '1',
+      troubleKinds: ['けが', '物損（機材・建物）', '元請や近隣からの苦情', '工程の遅れ', 'その他'], officeTel: '0773-00-0000' });
+    if (p.action === 'leaderView') return res(params.get('leader') !== '1' ? { ok: true, isLeader: false } : { ok: true, isLeader: true, today: '2026/10/27', date: p.date || '2026/10/27', from: '2026/10/01',
+      pending: ['2026/10/27', '2026/10/24'], confirmed: false, people: [
+        { id: 'E001', name: '試作 太郎', kubun: '社員', in: '07:55', out: '', sites: ['舞鶴病院 改修'], count: 1, state: '未確認' },
+        { id: 'J002', name: '森 二郎', kubun: '社員', in: '08:02', out: '17:10', sites: ['舞鶴病院 改修'], count: 1, state: '未確認' },
+        { id: 'S001', name: '山田 親方', kubun: '下請', in: '', out: '', sites: ['舞鶴病院 改修'], count: 3, state: '未確認' }] });
+    if (p.action === 'leaderConfirm') { window.__lastConfirm = p; return res({ ok: true, date: p.date, count: p.items.length, absent: p.items.filter(i => !i.present).length }); }
+    if (p.offline && params.get('reject') === '1') return res({ ok: false, error: 'テスト用：受付で断られました' });
+    const until = new Date(Date.now() + 5 * 60000).toISOString();
+    if (p.action === 'cancel') return res({ ok: true, cancelled: '出勤 ' + hhmm(new Date()) + ' 舞鶴病院 改修' });
+    if (p.action === 'punch') { window.__lastPunch = p; return res({ ok: true, type: p.type, time: hhmm(new Date()), siteName: '舞鶴病院 改修', judge: '範囲内', notes: [], duration: p.type === '退勤' ? '9:34' : undefined, cancel: { target: 'R000009', until: until } }); }
+    if (p.action === 'mine') return res(kubun === '下請'
+      ? { ok: true, label: '2026年10月', month: p.month || 'this', kubun: '下請', summary: { days: 2, total: 5, check: 0 }, rows: [
+          { date: '2026/10/27', site: '舞鶴病院 改修', ninku: 1, count: 3, total: 3, notes: [] },
+          { date: '2026/10/22', site: '東舞鶴駅前ビル 照明', ninku: '', count: '', total: 2, notes: ['事務所が修正しました'] }] }
+      : { ok: true, label: p.month === 'prev' ? '2026年9月' : '2026年10月', month: p.month || 'this', kubun: '社員', summary: { days: 3, total: 3, hours: '18:30', check: 1 }, rows: [
+          { date: '2026/10/27', site: '舞鶴病院 改修', in: '08:00', out: '17:30', duration: '9:30', notes: [] },
+          { date: '2026/10/26', site: '舞鶴病院 改修', in: '08:00', out: '', duration: '', notes: ['退勤の記録がありません'] },
+          { date: '2026/10/23', site: '東舞鶴駅前ビル 照明', in: '08:00', out: '17:00', duration: '9:00', notes: ['事務所が修正しました'] }] });
+    if (p.action === 'report') window.__lastReport = p;
+    if (p.action === 'report') return res(p.mode === 'new' && params.get('done') === '1' ? { ok: false, already: true, summary: ['舞鶴病院 改修 1日×3人'] } : { ok: true, workDate: p.workDate, mode: p.mode === 'fix' ? '修正' : p.mode === 'add' ? '追加' : '新規', saved: p.lines.map(l => (l.siteName || l.siteId) + ' ' + (l.ninku === 1 ? '1日' : '半日') + '×' + l.count + '人') });
+    res({ ok: false, error: '不明' });
+  }, 300));
+}
+
+boot();
+</script>
+</body>
+</html>
