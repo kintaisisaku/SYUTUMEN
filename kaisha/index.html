@@ -546,7 +546,7 @@ async function doPunch(type, memo) {
   if (type === '出勤' && needLeader() && !leaderOf('punch')) { alert('現場リーダーを選んでください'); return; }
   if (type === '退勤' && !troubleIsValid()) return;
   const pick = pickPayload('punch');
-  const payload = Object.assign({ action: 'punch', type: type, memo: memo }, pick);
+  const payload = Object.assign({ action: 'punch', type: type, memo: memo, canAsk: true }, pick); // canAsk：遅刻・早退を確かめる画面を持っている（打刻画面7から）
   if (type === '出勤') payload.leaderId = leaderOf('punch');
   if (type === '退勤') payload.trouble = troublePayload();
   if (S.info.staff.geo && S.pos) Object.assign(payload, { lat: S.pos.lat, lng: S.pos.lng, acc: S.pos.acc });
